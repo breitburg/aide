@@ -1,6 +1,6 @@
 import requests
 import json
-from typing import List, Optional, Dict, Any
+from typing import Optional, Any
 from dataclasses import dataclass
 
 
@@ -15,7 +15,7 @@ class Ollama:
         system: Optional[str] = None,
         format: Optional[str] = None,
         stream: bool = True,
-        context: Optional[List[int]] = None,
+        context: Optional[list[int]] = None,
         raw: bool = False,
     ):
         url = self.base_url + "/api/generate"
@@ -47,7 +47,7 @@ class Ollama:
         model: str,
         system: Optional[str] = None,
         format: Optional[str] = None,
-        context: Optional[List[int]] = None,
+        context: Optional[list[int]] = None,
     ) -> "CompletionChunk":
         chunks = list(self.generate(prompt, model, system, format, False, context))
         if chunks:
@@ -66,7 +66,7 @@ class CompletionDetails:
     prompt_eval_duration: Optional[int]
     eval_count: Optional[int]
     eval_duration: Optional[int]
-    context: Optional[List[int]]
+    context: Optional[list[int]]
 
     @property
     def speed(self):
@@ -76,7 +76,7 @@ class CompletionDetails:
         return None
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CompletionDetails":
+    def from_dict(cls, data: dict[str, Any]) -> "CompletionDetails":
         return cls(
             total_duration=data.get("total_duration"),
             load_duration=data.get("load_duration"),
@@ -98,7 +98,7 @@ class CompletionChunk:
     details: Optional[CompletionDetails]
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CompletionChunk":
+    def from_dict(cls, data: dict[str, Any]) -> "CompletionChunk":
         details = CompletionDetails.from_dict(data)
 
         return cls(

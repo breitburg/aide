@@ -1,15 +1,12 @@
 import curses
-from ollama import Ollama
+from aide.ollama import Ollama
 from threading import Timer
-from typer import Typer, Option
-from typing_extensions import Annotated
-
-app = Typer(name="aide")
 
 
 class TextEditor:
-    def __init__(self, model: str, text: str = None):
+    def __init__(self, model: str, text: str = None, ahead: int = 5):
         self.suggestion = ""
+        self.ahead = ahead
 
         # Keeping the state of each line in the editor
         self.lines = (text or "").split("\n")
@@ -185,20 +182,5 @@ class TextEditor:
             self.suggestion += token.text
             self.redraw_text()
 
-            if len(self.suggestion.split(" ")) > 5:
+            if len(self.suggestion.split(" ")) > self.ahead:
                 break
-
-
-@app.command()
-def main(
-    text: Annotated[
-        str, Option(help="The initial text that would be inserted into the editor")
-    ] = None,
-    model: Annotated[str, Option(help="The model to use for the AI")] = "mistral:text",
-):
-    text_editor = TextEditor(model=model, text=text)
-    curses.wrapper(text_editor.run)
-
-
-if __name__ == "__main__":
-    app()

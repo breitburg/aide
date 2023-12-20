@@ -11,6 +11,8 @@ typer = {extras = ["all"], version = "^0.9.0"}
 litellm = "^1.15.1"
 langchain = "^0.0.351"
 
+[tool.poetry.scripts]
+llmgraph = 'aide.console:app'
 
 [build-system]
 requires = ["poetry-core"]
