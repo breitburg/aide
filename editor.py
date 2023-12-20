@@ -1,16 +1,27 @@
 import curses
+from ollama import Ollama
+from threading import Timer
+from typer import Typer, Option
+from typing_extensions import Annotated
+
+app = Typer(name="aide")
 
 
 class TextEditor:
-    def __init__(self, suggestion: str = " world"):
-        self.suggestion = suggestion
-
-        # Setting initial cursor position
-        self.cursor_x = 0
-        self.cursor_y = 0
+    def __init__(self, model: str, text: str = None):
+        self.suggestion = ""
 
         # Keeping the state of each line in the editor
-        self.lines = [""]
+        self.lines = (text or "").split("\n")
+
+        # Setting initial cursor position depending on the text
+        self.cursor_x = len(self.lines[-1])
+        self.cursor_y = len(self.lines) - 1
+
+        # AI model
+        self.ollama = Ollama()
+        self.model = model
+        self.timer = None
 
     def _initialize_colors(self):
         """Initialize color setup"""
@@ -31,8 +42,16 @@ class TextEditor:
         self.stdscr.refresh()
         self.stdscr.move(self.cursor_y, self.cursor_x)
 
-    def process_keystroke(self, key) -> tuple[int, int]:
+    def process_keystroke(self, key) -> None:
         """Handle keystrokes for editor navigation and text processing"""
+
+        # Tab key
+        if key == 9:
+            self._handle_tab_key()
+            self.suggestion = ""
+            return
+
+        self.suggestion = ""
 
         # Navigation keys
         if key in (curses.KEY_UP, curses.KEY_DOWN, curses.KEY_LEFT, curses.KEY_RIGHT):
@@ -49,10 +68,6 @@ class TextEditor:
         # Delete key
         elif key in (4, curses.KEY_DC):
             return self._handle_delete_key()
-
-        # Tab key
-        elif key == 9:
-            return self._handle_tab_key()
 
         return self._handle_regular_characters(key)
 
@@ -85,15 +100,12 @@ class TextEditor:
                 )
             )
 
-        return self.cursor_x, self.cursor_y
-
     def _handle_enter_key(self) -> tuple[int, int]:
         self.lines = (
             self.lines[: self.cursor_y + 1] + [""] + self.lines[self.cursor_y + 1 :]
         )
 
         self.cursor_y, self.cursor_x = self.cursor_y + 1, 0
-        return self.cursor_x, self.cursor_y
 
     def _handle_backspace_key(self) -> tuple[int, int]:
         if self.cursor_x > 0:
@@ -107,7 +119,6 @@ class TextEditor:
             self.lines[self.cursor_y - 1] += self.lines[self.cursor_y]
             self.lines = self.lines[: self.cursor_y] + self.lines[self.cursor_y + 1 :]
             self.cursor_y -= 1
-        return self.cursor_x, self.cursor_y
 
     def _handle_delete_key(self):
         if self.cursor_x < len(self.lines[self.cursor_y]):
@@ -115,16 +126,25 @@ class TextEditor:
                 self.lines[self.cursor_y][: self.cursor_x]
                 + self.lines[self.cursor_y][self.cursor_x + 1 :]
             )
-        return self.cursor_x, self.cursor_y
 
     def _handle_tab_key(self):
-        self.lines[self.cursor_y] = (
-            self.lines[self.cursor_y][: self.cursor_x]
-            + self.suggestion
-            + self.lines[self.cursor_y][self.cursor_x :]
-        )
-        self.cursor_x += len(self.suggestion)
-        return self.cursor_x, self.cursor_y
+        suggestions = self.suggestion.split("\n")
+
+        for index, suggestion in enumerate(suggestions):
+            if index == 0:  # If it's the first line
+                # Insert the suggestion on the current line
+                self.lines[self.cursor_y] = (
+                    self.lines[self.cursor_y][: self.cursor_x]
+                    + suggestion
+                    + self.lines[self.cursor_y][self.cursor_x :]
+                )
+                self.cursor_x += len(suggestion)
+                continue
+
+            # Insert the suggestion on a new line
+            self.cursor_y += 1
+            self.lines.insert(self.cursor_y, suggestion)
+            self.cursor_x = len(suggestion)
 
     def _handle_regular_characters(self, key):
         self.lines[self.cursor_y] = (
@@ -133,7 +153,6 @@ class TextEditor:
             + self.lines[self.cursor_y][self.cursor_x :]
         )
         self.cursor_x += 1
-        return self.cursor_x, self.cursor_y
 
     def run(self, stdscr: curses.window):
         # Clearing the screen
@@ -150,9 +169,36 @@ class TextEditor:
 
             # Input handling
             key = self.stdscr.getch()
-            self.cursor_x, self.cursor_y = self.process_keystroke(key)
+            self.process_keystroke(key)
+
+            if self.timer:
+                self.timer.cancel()
+
+            self.timer = Timer(0.5, self.ask_llm)
+            self.timer.start()
+
+    def ask_llm(self) -> None:
+        stream = self.ollama.generate("\n".join(self.lines), model=self.model, raw=True)
+
+        self.suggestion = ""
+        for token in stream:
+            self.suggestion += token.text
+            self.redraw_text()
+
+            if len(self.suggestion.split(" ")) > 5:
+                break
+
+
+@app.command()
+def main(
+    text: Annotated[
+        str, Option(help="The initial text that would be inserted into the editor")
+    ] = None,
+    model: Annotated[str, Option(help="The model to use for the AI")] = "mistral:text",
+):
+    text_editor = TextEditor(model=model, text=text)
+    curses.wrapper(text_editor.run)
 
 
 if __name__ == "__main__":
-    text_editor = TextEditor()
-    curses.wrapper(text_editor.run)
+    app()
